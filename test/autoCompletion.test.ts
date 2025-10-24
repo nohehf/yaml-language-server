@@ -2710,6 +2710,47 @@ describe('Auto Completion Tests', () => {
         createExpectedCompletion('2.1', '2.1', 0, 9, 0, 9, 12, InsertTextFormat.Snippet, { documentation: undefined })
       );
     });
+
+    describe('default values for arrays', () => {
+      it('should complete array property without item type', async () => {
+        schemaProvider.addSchema(SCHEMA_ID, {
+          type: 'object',
+          properties: {
+            KEY: {
+              type: 'array',
+              default: ['DEFAULT_VALUE_1', 'DEFAULT_VALUE_2'],
+            },
+          },
+        });
+
+        const content = 'KEY';
+        const result = await parseSetup(content, content.length);
+        expect(result.items.length).to.equal(1);
+        expect(result.items[0].label).to.equal('KEY');
+        expect(result.items[0].insertText).to.equal('KEY: \n  - ${1:DEFAULT_VALUE_1}\n  - ${2:DEFAULT_VALUE_2}\n');
+      });
+
+      it('should complete array property with item type', async () => {
+        schemaProvider.addSchema(SCHEMA_ID, {
+          type: 'object',
+          properties: {
+            KEY: {
+              type: 'array',
+              items: {
+                type: 'string',
+              },
+              default: ['DEFAULT_VALUE_1', 'DEFAULT_VALUE_2'],
+            },
+          },
+        });
+
+        const content = 'KEY';
+        const result = await parseSetup(content, content.length);
+        expect(result.items.length).to.equal(1);
+        expect(result.items[0].label).to.equal('KEY');
+        expect(result.items[0].insertText).to.equal('KEY: \n  - ${1:DEFAULT_VALUE_1}\n  - ${2:DEFAULT_VALUE_2}\n');
+      });
+    });
   });
 
   describe('Array completion', () => {
