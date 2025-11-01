@@ -1067,9 +1067,9 @@ export class YamlCompletion {
       if (propertySchema.properties) {
         return `${resultText}\n${this.getInsertTextForObject(propertySchema, separatorAfter, indent).insertText}`;
       } else if (propertySchema.items) {
-        return `${resultText}\n${indent}- ${
-          this.getInsertTextForArray(propertySchema.items, separatorAfter, 1, indent).insertText
-        }`;
+        const defaultArray = Array.isArray(propertySchema.default) ? propertySchema.default : undefined;
+        const arrayInsertResult = this.getInsertTextForArray(propertySchema.items, separatorAfter, 1, indent, defaultArray);
+        return `${resultText} \n${indent}- ${arrayInsertResult.insertText}`;
       }
       if (nValueProposals === 0) {
         switch (type) {
@@ -1207,12 +1207,58 @@ export class YamlCompletion {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private getInsertTextForArray(schema: any, separatorAfter: string, insertIndex = 1, indent = this.indentation): InsertText {
+  private getInsertTextForArray(
+    schema: any,
+    separatorAfter: string,
+    insertIndex = 1,
+    indent = this.indentation,
+    defaultValue?: any[]
+  ): InsertText {
     let insertText = '';
     if (!schema) {
       insertText = `$${insertIndex++}`;
       return { insertText, insertIndex };
     }
+
+    // If default value is provided and is an array, use it to populate array items
+    if (Array.isArray(defaultValue) && defaultValue.length > 0) {
+      const arrayItems: string[] = [];
+      const navOrder = { index: insertIndex };
+      for (const defaultItem of defaultValue) {
+        let itemText: string;
+        if (typeof defaultItem === 'object' && defaultItem !== null && !Array.isArray(defaultItem)) {
+          // Object item - use getInsertTextForObject if schema has properties
+          if (schema.properties) {
+            const objectResult = this.getInsertTextForObject(schema, separatorAfter, `${indent}  `, navOrder.index++);
+            itemText = objectResult.insertText.trimLeft();
+            navOrder.index = objectResult.insertIndex;
+          } else {
+            const template = this.getInsertTemplateForValue(defaultItem, `${indent}  `, navOrder, separatorAfter);
+            itemText = template.trimLeft();
+          }
+        } else if (Array.isArray(defaultItem)) {
+          // Nested array - recursively call getInsertTextForArray
+          const nestedResult = this.getInsertTextForArray(schema.items || schema, separatorAfter, navOrder.index, `${indent}  `, [
+            defaultItem,
+          ]);
+          itemText = nestedResult.insertText;
+          navOrder.index = nestedResult.insertIndex;
+        } else {
+          // Primitive value - format according to schema type
+          const itemType = Array.isArray(schema.type) ? schema.type[0] : schema.type;
+          if (itemType === 'string') {
+            itemText = `\${${navOrder.index++}:${this.convertToStringValue(defaultItem)}}`;
+          } else {
+            itemText = `\${${navOrder.index++}:${defaultItem}}`;
+          }
+        }
+        arrayItems.push(itemText);
+      }
+      insertText = arrayItems.join(`\n${indent}- `) + '\n';
+      return { insertText, insertIndex: navOrder.index };
+    }
+
+    // Default behavior - create a single placeholder item
     let type = Array.isArray(schema.type) ? schema.type[0] : schema.type;
     if (!type) {
       if (schema.properties) {
